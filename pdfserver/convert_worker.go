@@ -164,7 +164,7 @@ func ConvertWorker (tasks chan Task) () {
 
 					select {
 						case err := <-uploadErrs:
-							log.Printf("Page %d (PDF %s) failed to upload: %s", page, id, err.Error())
+							log.Printf("Page %d (PDF %s) failed to upload: %s", page, task.id, err.Error())
 							done <- false
 						case <-uploadDone:
 							done <- true
