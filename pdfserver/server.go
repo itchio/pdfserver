@@ -5,12 +5,16 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"fmt"
 )
 
+type Task struct {
+	url, id, callback string
+}
+
 var config *Config
+var Tasks chan Task
 
 type errorHandler func(http.ResponseWriter, *http.Request) error
 
@@ -29,20 +33,6 @@ func getParam(params url.Values, name string) (string, error) {
 	}
 
 	return val, nil
-}
-
-func getIntParam(params url.Values, name string) (int, error) {
-	valStr, err := getParam(params, name)
-	if err != nil {
-		return 0, err
-	}
-
-	valInt, err := strconv.Atoi(valStr)
-	if err != nil {
-		return 0, err
-	}
-
-	return valInt, nil
 }
 
 func writeJSONMessage(w http.ResponseWriter, msg interface{}) error {
@@ -64,6 +54,12 @@ func writeJSONError(w http.ResponseWriter, kind string, err error) error {
 
 func StartPdfServer(listenTo string, _config *Config) error {
 	config = _config
+	Tasks = make(chan Task, 1024)
+
+	for i := 0; i < config.NumWorkers; i++ {
+		go ConvertWorker(Tasks)
+	}
+
 	http.Handle("/convert", errorHandler(convertHandler))
 
 	log.Print("Listening on: " + listenTo)

@@ -12,12 +12,16 @@ type Config struct {
 	MaxFileSize       int64
 	MaxPages          int
 	MaxPageSize       int64
+	TempPath          string
+	NumWorkers        int
 }
 
 var defaultConfig = Config{
-	MaxFileSize:       1024 * 1024 * 100,
-        MaxPages:          400,
+	MaxFileSize:       1024 * 1024 * 250,
+	MaxPages:          400,
 	MaxPageSize:       1024 * 1024 * 4,
+	TempPath:          "tmp",
+	NumWorkers:        6,
 }
 
 func LoadConfig(fname string) *Config {
