@@ -173,9 +173,34 @@ func ConvertWorker (tasks chan Task) () {
 			}
 
 			// wait for all pages to finish uploading before removing the directory
+
+			allDone := true
+
 			for page := 0; page < pages; page++ {
-				<-done
+				pageDone := <-done
+				allDone = allDone && pageDone
 			}
+
+			resValues = url.Values{}
+
+			resValues.Add("ID", task.id)
+			if allDone {
+				resValues.Add("Success", "true")
+				resValues.Add("Uploaded", "true")
+			} else {
+				resValues.Add("Success", "false")
+				resValues.Add("Uploaded", "false")
+			}
+
+			res, err = http.PostForm(task.callback, resValues)
+			if err != nil {
+				log.Print("Failed to deliver post-upload callback: " + err.Error())
+				return
+			}
+
+			log.Print("All done!")
+
+			res.Body.Close()
 
 		}(task)
 	}
