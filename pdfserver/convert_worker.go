@@ -12,9 +12,11 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/itchio/httpkit/uploader"
 	"github.com/itchio/wharf/state"
+	"launchpad.net/xmlpath"
 	"rsc.io/pdf"
 )
 
@@ -22,8 +24,13 @@ type ConversionFinishedResponse struct {
 	UploadURLs []string `json:"upload_urls"`
 }
 
+type PdfConversionResult struct {
+	Pages       int
+	PageFormats []string
+}
+
 func ConvertWorker (tasks chan Task) () {
-	process := func(task Task) (int, error) {
+	process := func(task Task) (*PdfConversionResult, error) {
 		pdf_url := task.url
 		id := task.id
 
@@ -31,7 +38,7 @@ func ConvertWorker (tasks chan Task) () {
 
 		file, err := os.Create(config.TempPath + "/" + id + "/pdf.pdf")
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 
 		log.Print("Fetching URL: ", pdf_url)
@@ -39,24 +46,26 @@ func ConvertWorker (tasks chan Task) () {
 		res, err := client.Get(pdf_url)
 
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 
 		defer res.Body.Close()
 
 		if res.StatusCode != 200 {
-			return 0, fmt.Errorf("Failed to fetch file: %d", res.StatusCode)
+			return nil, fmt.Errorf("Failed to fetch file: %d", res.StatusCode)
 		}
 
 		_, err = io.CopyN(file, res.Body, config.MaxFileSize)
 		if err != nil && err != io.EOF {
-			return 0, err
+			return nil, err
 		}
+
+		log.Print("Download finished")
 
 		_, err = io.CopyN(ioutil.Discard, res.Body, 1)
 		if err != io.EOF {
 			log.Print("File was too big")
-			return 0, errors.New("File was too big")
+			return nil, errors.New("File was too big")
 		}
 
 		file.Close()
@@ -65,32 +74,85 @@ func ConvertWorker (tasks chan Task) () {
 
 		if err != nil {
 			log.Print("Failed to load PDF " + id + ": " + err.Error())
-			return 0, err
+			return nil, err
 		}
 
 		pages := pdf.NumPage()
 
 		if pages > config.MaxPages {
-			return pages, fmt.Errorf("PDF has too many pages (%d)", pages)
+			return nil, fmt.Errorf("PDF has too many pages (%d)", pages)
 		}
+
+		log.Print("Converting...")
 
 		cmd := exec.Command("pdf2svg", config.TempPath + "/" + id + "/pdf.pdf", config.TempPath + "/" + id + "/page%d.svg", "all")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Run()
 
-		for page := 0; page < pages; page++ {
-			if _, err := os.Stat(fmt.Sprintf(config.TempPath + "/%s/page%d.svg", id, page + 1)); os.IsNotExist(err) {
-				return pages, fmt.Errorf("Page %d failed to convert", page + 1)
+		pageFormats := make([]string, pages)
+
+		for page := 1; page < pages + 1; page++ {
+			pagePath := fmt.Sprintf(config.TempPath + "/%s/page%d.svg", id, page)
+			if _, err := os.Stat(pagePath); os.IsNotExist(err) {
+				return nil, fmt.Errorf("Page %d failed to convert", page)
+			}
+
+			pageReader, err := os.Open(pagePath)
+			defer pageReader.Close()
+
+			root, err := xmlpath.Parse(pageReader)
+			if err != nil {
+				log.Printf("Failed to parse SVG for page %d: %s", page, err.Error())
+			} else {
+				// a SVG is considered to be formed of only raster images if it doesn't contain any of:
+				// todo: path elements can appear inside clipPaths; don't count those towards visible vector elements
+
+				vectorElements := []string {"circle", "ellipse", "line", "mpath", "path", "polygon",
+				  "polyline", "rect", "text"}
+
+				convertToRaster := true
+
+				for _, elem := range vectorElements {
+					path := xmlpath.MustCompile("//" + elem)
+					if path.Exists(root) {
+						convertToRaster = false
+						break
+					}
+				}
+
+				if convertToRaster {
+					pageFormats[page - 1] = "jpg"
+
+					rasterPath := fmt.Sprintf(config.TempPath + "/%s/page%d." + pageFormats[page - 1], id, page)
+					log.Printf("Page %d only has images; converting to raster", page)
+
+					// TODO: maybe figure out what density/width to use based on the width of the biggest image
+
+					cmd = exec.Command("convert", "-density", "80", pagePath, rasterPath)
+					cmd.Stdout = os.Stdout
+					cmd.Stderr = os.Stderr
+					cmd.Run()
+
+					if _, err = os.Stat(rasterPath); os.IsNotExist(err) {
+						log.Printf("Rasterizing page %d failed, uploading SVG", id)
+						pageFormats[page - 1] = "svg"
+					}
+				} else {
+					pageFormats[page - 1] = "svg"
+				}
 			}
 		}
 
-		return pages, nil
+		return &PdfConversionResult {
+			Pages: pages,
+			PageFormats: pageFormats,
+		}, nil
 	}
 
 	for task := range tasks {
 		func(task Task) {
-			pages, err := process(task)
+			result, err := process(task)
 
 			resValues := url.Values{}
 			success := err == nil
@@ -101,10 +163,11 @@ func ConvertWorker (tasks chan Task) () {
 				resValues.Add("Error", err.Error())
 			} else {
 				resValues.Add("Success", "true")
-				resValues.Add("Pages", strconv.Itoa(pages))
+				resValues.Add("Pages", strconv.Itoa(result.Pages))
+				resValues.Add("PageFormats", strings.Join(result.PageFormats, ","))
 			}
 
-			defer os.RemoveAll(config.TempPath + "/" + task.id)
+			// defer os.RemoveAll(config.TempPath + "/" + task.id)
 
 			res, err := http.PostForm(task.callback, resValues)
 			if err != nil {
@@ -131,7 +194,7 @@ func ConvertWorker (tasks chan Task) () {
 				return
 			}
 
-			if len(response.UploadURLs) != pages {
+			if len(response.UploadURLs) != result.Pages {
 				log.Print("Got an invalid amount of upload URLs")
 				return
 			}
@@ -139,12 +202,16 @@ func ConvertWorker (tasks chan Task) () {
 			done := make(chan bool)
 
 			// todo: probably shouldn't create this many goroutines?
-			for page := 0; page < pages; page++ {
+			for page := 0; page < result.Pages; page++ {
 				go (func(page int) {
 					uploadDone := make(chan bool)
 					uploadErrs := make(chan error)
 
-					svg, err := os.Open(fmt.Sprintf(config.TempPath + "/%s/page%d.svg", task.id, page + 1))
+					fullPath := fmt.Sprintf(config.TempPath + "/%s/page%d.%s", task.id, page + 1, result.PageFormats[page])
+					svg, err := os.Open(fullPath)
+
+					log.Printf("Uploading file %s", fullPath)
+
 					if err != nil {
 						log.Printf("Failed to open page %d: %s", page + 1, err.Error())
 						done <- false
@@ -176,7 +243,7 @@ func ConvertWorker (tasks chan Task) () {
 
 			allDone := true
 
-			for page := 0; page < pages; page++ {
+			for page := 0; page < result.Pages; page++ {
 				pageDone := <-done
 				allDone = allDone && pageDone
 			}
