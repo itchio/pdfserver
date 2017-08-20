@@ -1,14 +1,14 @@
 package pdfserver
 
 import (
-	"errors"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
-	"net/url"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
@@ -29,12 +29,12 @@ type PdfConversionResult struct {
 	PageFormats []string
 }
 
-func ConvertWorker (tasks chan Task) () {
+func ConvertWorker(tasks chan Task) {
 	process := func(task Task) (*PdfConversionResult, error) {
 		pdf_url := task.url
 		id := task.id
 
-		os.MkdirAll(config.TempPath + "/" + id, 0700)
+		os.MkdirAll(config.TempPath+"/"+id, 0700)
 
 		file, err := os.Create(config.TempPath + "/" + id + "/pdf.pdf")
 		if err != nil {
@@ -85,15 +85,15 @@ func ConvertWorker (tasks chan Task) () {
 
 		log.Print("Converting...")
 
-		cmd := exec.Command("pdf2svg", config.TempPath + "/" + id + "/pdf.pdf", config.TempPath + "/" + id + "/page%d.svg", "all")
+		cmd := exec.Command("pdf2svg", config.TempPath+"/"+id+"/pdf.pdf", config.TempPath+"/"+id+"/page%d.svg", "all")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Run()
 
 		pageFormats := make([]string, pages)
 
-		for page := 1; page < pages + 1; page++ {
-			pagePath := fmt.Sprintf(config.TempPath + "/%s/page%d.svg", id, page)
+		for page := 1; page < pages+1; page++ {
+			pagePath := fmt.Sprintf(config.TempPath+"/%s/page%d.svg", id, page)
 			if _, err := os.Stat(pagePath); os.IsNotExist(err) {
 				return nil, fmt.Errorf("Page %d failed to convert", page)
 			}
@@ -108,8 +108,8 @@ func ConvertWorker (tasks chan Task) () {
 				// a SVG is considered to be formed of only raster images if it doesn't contain any of:
 				// todo: path elements can appear inside clipPaths; don't count those towards visible vector elements
 
-				vectorElements := []string {"circle", "ellipse", "line", "mpath", "path", "polygon",
-				  "polyline", "rect", "text"}
+				vectorElements := []string{"circle", "ellipse", "line", "mpath", "path", "polygon",
+					"polyline", "rect", "text"}
 
 				convertToRaster := true
 
@@ -122,9 +122,9 @@ func ConvertWorker (tasks chan Task) () {
 				}
 
 				if convertToRaster {
-					pageFormats[page - 1] = "jpg"
+					pageFormats[page-1] = "jpg"
 
-					rasterPath := fmt.Sprintf(config.TempPath + "/%s/page%d." + pageFormats[page - 1], id, page)
+					rasterPath := fmt.Sprintf(config.TempPath+"/%s/page%d."+pageFormats[page-1], id, page)
 					log.Printf("Page %d only has images; converting to raster", page)
 
 					// TODO: maybe figure out what density/width to use based on the width of the biggest image
@@ -136,16 +136,16 @@ func ConvertWorker (tasks chan Task) () {
 
 					if _, err = os.Stat(rasterPath); os.IsNotExist(err) {
 						log.Printf("Rasterizing page %d failed, uploading SVG", id)
-						pageFormats[page - 1] = "svg"
+						pageFormats[page-1] = "svg"
 					}
 				} else {
-					pageFormats[page - 1] = "svg"
+					pageFormats[page-1] = "svg"
 				}
 			}
 		}
 
-		return &PdfConversionResult {
-			Pages: pages,
+		return &PdfConversionResult{
+			Pages:       pages,
 			PageFormats: pageFormats,
 		}, nil
 	}
@@ -207,13 +207,13 @@ func ConvertWorker (tasks chan Task) () {
 					uploadDone := make(chan bool)
 					uploadErrs := make(chan error)
 
-					fullPath := fmt.Sprintf(config.TempPath + "/%s/page%d.%s", task.id, page + 1, result.PageFormats[page])
+					fullPath := fmt.Sprintf(config.TempPath+"/%s/page%d.%s", task.id, page+1, result.PageFormats[page])
 					svg, err := os.Open(fullPath)
 
 					log.Printf("Uploading file %s", fullPath)
 
 					if err != nil {
-						log.Printf("Failed to open page %d: %s", page + 1, err.Error())
+						log.Printf("Failed to open page %d: %s", page+1, err.Error())
 						done <- false
 						return
 					}
@@ -230,11 +230,11 @@ func ConvertWorker (tasks chan Task) () {
 					writer.Close()
 
 					select {
-						case err := <-uploadErrs:
-							log.Printf("Page %d (PDF %s) failed to upload: %s", page, task.id, err.Error())
-							done <- false
-						case <-uploadDone:
-							done <- true
+					case err := <-uploadErrs:
+						log.Printf("Page %d (PDF %s) failed to upload: %s", page, task.id, err.Error())
+						done <- false
+					case <-uploadDone:
+						done <- true
 					}
 				})(page)
 			}

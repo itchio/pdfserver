@@ -29,19 +29,19 @@ func convertHandler(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	
+
 	task := Task{url: pdf_url, id: id, callback: callbackURL}
 
 	select {
-		case Tasks <- task:
-			return writeJSONMessage(w, struct {
-				Processing bool
-				Async      bool
-			}{true, true})
-		case <-time.After(time.Second * 10):
-			return writeJSONMessage(w, struct {
-				Processing bool
-			}{false})
+	case Tasks <- task:
+		return writeJSONMessage(w, struct {
+			Processing bool
+			Async      bool
+		}{true, true})
+	case <-time.After(time.Second * 10):
+		return writeJSONMessage(w, struct {
+			Processing bool
+		}{false})
 	}
 
 }
