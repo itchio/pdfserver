@@ -4,7 +4,7 @@ import (
 	"flag"
 	"log"
 
-	. "github.com/GranPC/pdfserver/pdfserver"
+	. "github.com/itchio/pdfserver/pdfserver"
 )
 
 var (
