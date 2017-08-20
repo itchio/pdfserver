@@ -1,0 +1,52 @@
+{
+	"ImportPath": "github.com/itchio/pdfserver",
+	"GoVersion": "go1.8",
+	"GodepVersion": "v79",
+	"Deps": [
+		{
+			"ImportPath": "github.com/getlantern/golog",
+			"Rev": "900ce49b8edb3fac1ca42ec3f82217f459673c83"
+		},
+		{
+			"ImportPath": "github.com/getlantern/idletiming",
+			"Rev": "a25755e429fe6415bdf4e9a534dff3d05d0fd74d"
+		},
+		{
+			"ImportPath": "github.com/go-errors/errors",
+			"Rev": "8fa88b06e5974e97fbf9899a7f86a344bfd1f105"
+		},
+		{
+			"ImportPath": "github.com/itchio/httpkit/retrycontext",
+			"Rev": "bade0806340d770867fd91d92085a7ec7141e58a"
+		},
+		{
+			"ImportPath": "github.com/itchio/httpkit/timeout",
+			"Rev": "bade0806340d770867fd91d92085a7ec7141e58a"
+		},
+		{
+			"ImportPath": "github.com/itchio/httpkit/uploader",
+			"Rev": "bade0806340d770867fd91d92085a7ec7141e58a"
+		},
+		{
+			"ImportPath": "github.com/itchio/wharf/counter",
+			"Rev": "3bffd9f95c2c447a02d86630828d01fb28b1cd0c"
+		},
+		{
+			"ImportPath": "github.com/itchio/wharf/splitfunc",
+			"Rev": "3bffd9f95c2c447a02d86630828d01fb28b1cd0c"
+		},
+		{
+			"ImportPath": "github.com/itchio/wharf/state",
+			"Rev": "3bffd9f95c2c447a02d86630828d01fb28b1cd0c"
+		},
+		{
+			"ImportPath": "launchpad.net/xmlpath",
+			"Comment": "4",
+			"Rev": "gustavo@niemeyer.net-20130614043138-kasci7s9kddz0e5v"
+		},
+		{
+			"ImportPath": "rsc.io/pdf",
+			"Rev": "1d34785eb915fd1ea1c437ad41621c9066642030"
+		}
+	]
+}

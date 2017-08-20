@@ -13,8 +13,9 @@ import (
 // connection idle.  Note - the actual timeout may be up to twice idleTimeout,
 // depending on timing.
 //
-// If onIdle is specified, it will be called to indicate when the connection has
-// idled and been closed.
+// onIdle is a required function that's called if a connection idles.
+// idletiming.Conn does not close the underlying connection on idle, you have to
+// do that in your onIdle callback.
 func Listener(listener net.Listener, idleTimeout time.Duration, onIdle func(conn net.Conn)) net.Listener {
 	if onIdle == nil {
 		panic("onIdle is required")
@@ -32,13 +33,9 @@ type idleTimingListener struct {
 func (l *idleTimingListener) Accept() (c net.Conn, err error) {
 	c, err = l.orig.Accept()
 	if err == nil {
-		var onIdle func()
-		if l.onIdle != nil {
-			onIdle = func() {
-				l.onIdle(c)
-			}
-		}
-		c = Conn(c, l.idleTimeout, onIdle)
+		c = Conn(c, l.idleTimeout, func() {
+			l.onIdle(c)
+		})
 	}
 	return
 }
